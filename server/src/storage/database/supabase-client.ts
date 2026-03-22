@@ -1,77 +1,25 @@
+```typescript
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { execSync } from 'child_process';
-
-let envLoaded = false;
 
 interface SupabaseCredentials {
   url: string;
   anonKey: string;
 }
 
-function loadEnv(): void {
-  if (envLoaded || (process.env.COZE_SUPABASE_URL && process.env.COZE_SUPABASE_ANON_KEY)) {
-    return;
-  }
-
-  try {
-    try {
-      require('dotenv').config();
-      if (process.env.COZE_SUPABASE_URL && process.env.COZE_SUPABASE_ANON_KEY) {
-        envLoaded = true;
-        return;
-      }
-    } catch {
-      // dotenv not available
-    }
-
-    const pythonCode = `
-import os
-import sys
-try:
-    from coze_workload_identity import Client
-    client = Client()
-    env_vars = client.get_project_env_vars()
-    client.close()
-    for env_var in env_vars:
-        print(f"{env_var.key}={env_var.value}")
-except Exception as e:
-    print(f"# Error: {e}", file=sys.stderr)
-`;
-
-    const output = execSync(`python3 -c '${pythonCode.replace(/'/g, "'\"'\"'")}'`, {
-      encoding: 'utf-8',
-      timeout: 10000,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
-    const lines = output.trim().split('\n');
-    for (const line of lines) {
-      if (line.startsWith('#')) continue;
-      const eqIndex = line.indexOf('=');
-      if (eqIndex > 0) {
-        const key = line.substring(0, eqIndex);
-        let value = line.substring(eqIndex + 1);
-        if ((value.startsWith("'") && value.endsWith("'")) ||
-            (value.startsWith('"') && value.endsWith('"'))) {
-          value = value.slice(1, -1);
-        }
-        if (!process.env[key]) {
-          process.env[key] = value;
-        }
-      }
-    }
-
-    envLoaded = true;
-  } catch {
-    // Silently fail
-  }
-}
-
+/**
+ * 获取 Supabase 凭证
+ * Vercel 会自动注入环境变量到 process.env，无需额外加载
+ */
 function getSupabaseCredentials(): SupabaseCredentials {
-  loadEnv();
-
   const url = process.env.COZE_SUPABASE_URL;
   const anonKey = process.env.COZE_SUPABASE_ANON_KEY;
+
+  console.log('🔍 环境变量检查:', {
+    COZE_SUPABASE_URL: url ? '✅ 已设置' : '❌ 未设置',
+    COZE_SUPABASE_ANON_KEY: anonKey ? '✅ 已设置' : '❌ 未设置',
+    NODE_ENV: process.env.NODE_ENV,
+    VERCEL: process.env.VERCEL ? '✅ Vercel 环境' : '❌ 非 Vercel 环境'
+  });
 
   if (!url) {
     throw new Error('COZE_SUPABASE_URL is not set');
@@ -83,6 +31,9 @@ function getSupabaseCredentials(): SupabaseCredentials {
   return { url, anonKey };
 }
 
+/**
+ * 获取 Supabase 客户端
+ */
 function getSupabaseClient(token?: string): SupabaseClient {
   const { url, anonKey } = getSupabaseCredentials();
 
@@ -112,4 +63,4 @@ function getSupabaseClient(token?: string): SupabaseClient {
   });
 }
 
-export { loadEnv, getSupabaseCredentials, getSupabaseClient };
+export { getSupabaseCredentials, getSupabaseClient };
